@@ -57,9 +57,16 @@
                 android:label="@string/alarm_list_title"
                 android:theme="@style/AlarmClockTheme"
                 android:taskAffinity=""
+                android:icon="@mipmap/ic_launcher_alarmlist"
                 android:excludeFromRecents="true"
                 android:launchMode="standard"
-                android:exported="true" />
+                android:exported="true"
+                >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <activity-alias android:name="com.android.alarmclock.AlarmClock"
                 android:targetActivity="com.android.deskclock.AlarmClock"

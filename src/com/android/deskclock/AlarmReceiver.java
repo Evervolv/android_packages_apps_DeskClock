@@ -16,17 +16,16 @@
 
 package com.android.deskclock;
 
-import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.ContentUris;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.BroadcastReceiver;
-import android.database.Cursor;
 import android.os.Parcel;
 import android.os.PowerManager.WakeLock;
+
+import java.util.Calendar;
 
 /**
  * Glue class: connects AlarmAlert IntentReceiver to AlarmAlert
@@ -75,6 +74,8 @@ public class AlarmReceiver extends BroadcastReceiver {
                 Log.wtf("Unable to parse Alarm from intent.");
                 Alarms.saveSnoozeAlert(context, Alarms.INVALID_ALARM_ID, -1);
             }
+            // Inform any active UI that alarm snooze was cancelled
+            context.sendBroadcast(new Intent(Alarms.ALARM_SNOOZE_CANCELLED));
             return;
         } else if (!Alarms.ALARM_ALERT_ACTION.equals(intent.getAction())) {
             // Unknown intent, bail.
@@ -115,7 +116,7 @@ public class AlarmReceiver extends BroadcastReceiver {
         // Intentionally verbose: always log the alarm time to provide useful
         // information in bug reports.
         long now = System.currentTimeMillis();
-        Log.v("Recevied alarm set for " + Log.formatTime(alarm.time));
+        Log.v("Received alarm set for " + Log.formatTime(alarm.time));
 
         // Always verbose to track down time change problems.
         if (now > alarm.time + STALE_WINDOW) {
@@ -132,13 +133,15 @@ public class AlarmReceiver extends BroadcastReceiver {
         context.sendBroadcast(closeDialogs);
 
         // Decide which activity to start based on the state of the keyguard.
-        Class c = AlarmAlert.class;
+        Class c = AlarmAlertFullScreen.class;
+        /*
         KeyguardManager km = (KeyguardManager) context.getSystemService(
                 Context.KEYGUARD_SERVICE);
         if (km.inKeyguardRestrictedInputMode()) {
             // Use the full screen activity for security.
             c = AlarmAlertFullScreen.class;
         }
+        */
 
         // Play the alarm alert and vibrate the device.
         Intent playAlarm = new Intent(Alarms.ALARM_ALERT_ACTION);
@@ -148,22 +151,45 @@ public class AlarmReceiver extends BroadcastReceiver {
         // Trigger a notification that, when clicked, will show the alarm alert
         // dialog. No need to check for fullscreen since this will always be
         // launched from a user action.
-        Intent notify = new Intent(context, AlarmAlert.class);
+        Intent notify = new Intent(context, AlarmAlertFullScreen.class);
         notify.putExtra(Alarms.ALARM_INTENT_EXTRA, alarm);
         PendingIntent pendingNotify = PendingIntent.getActivity(context,
                 alarm.id, notify, 0);
 
-        // Use the alarm's label or the default label as the ticker text and
-        // main text of the notification.
+        // These two notifications will be used for the action buttons on the notification.
+        Intent snoozeIntent = new Intent(Alarms.ALARM_SNOOZE_ACTION);
+        snoozeIntent.putExtra(Alarms.ALARM_INTENT_EXTRA, alarm);
+        PendingIntent pendingSnooze = PendingIntent.getBroadcast(context,
+                alarm.id, snoozeIntent, 0);
+        Intent dismissIntent = new Intent(Alarms.ALARM_DISMISS_ACTION);
+        dismissIntent.putExtra(Alarms.ALARM_INTENT_EXTRA, alarm);
+        PendingIntent pendingDismiss = PendingIntent.getBroadcast(context,
+                alarm.id, dismissIntent, 0);
+
+        final Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(alarm.time);
+        String alarmTime = Alarms.formatTime(context, cal);
+
+        // Use the alarm's label or the default label main text of the notification.
         String label = alarm.getLabelOrDefault(context);
-        Notification n = new Notification(R.drawable.stat_notify_alarm,
-                label, alarm.time);
-        n.setLatestEventInfo(context, label,
-                context.getString(R.string.alarm_notify_text),
-                pendingNotify);
-        n.flags |= Notification.FLAG_SHOW_LIGHTS
-                | Notification.FLAG_ONGOING_EVENT;
-        n.defaults |= Notification.DEFAULT_LIGHTS;
+
+        Notification n = new Notification.Builder(context)
+        .setContentTitle(label)
+        .setContentText(alarmTime)
+        .setSmallIcon(R.drawable.stat_notify_alarm)
+        .setOngoing(true)
+        .setAutoCancel(false)
+        .setPriority(Notification.PRIORITY_MAX)
+        .setDefaults(Notification.DEFAULT_LIGHTS)
+        .setWhen(0)
+        .addAction(R.drawable.stat_notify_alarm,
+                context.getResources().getString(R.string.alarm_alert_snooze_text),
+                pendingSnooze)
+        .addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                context.getResources().getString(R.string.alarm_alert_dismiss_text),
+                pendingDismiss)
+        .build();
+        n.contentIntent = pendingNotify;
 
         // NEW: Embed the full-screen UI here. The notification manager will
         // take care of displaying it if it's OK to do so.
@@ -195,8 +221,8 @@ public class AlarmReceiver extends BroadcastReceiver {
             return;
         }
 
-        // Launch SetAlarm when clicked.
-        Intent viewAlarm = new Intent(context, SetAlarm.class);
+        // Launch AlarmClock when clicked.
+        Intent viewAlarm = new Intent(context, AlarmClock.class);
         viewAlarm.putExtra(Alarms.ALARM_INTENT_EXTRA, alarm);
         PendingIntent intent =
                 PendingIntent.getActivity(context, alarm.id, viewAlarm, 0);

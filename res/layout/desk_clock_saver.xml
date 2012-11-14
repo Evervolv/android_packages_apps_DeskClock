@@ -15,20 +15,67 @@
 -->
 
 <!-- Special "screen saver mode" with just the time/date on black. -->
-<AbsoluteLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dc="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF000000"
-    >
+    android:orientation="vertical"
+    android:background="#FF000000">
 
-    <FrameLayout
+    <!--  Extra layout to let the clock float in the window -->
+    <LinearLayout
+        android:id="@+id/main_clock"
+        android:orientation="vertical"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:id="@+id/saver_view">
-        <include layout="@layout/desk_clock_time_date"
+        android:layout_marginTop="@dimen/time_margin_top"
+        android:layout_marginBottom="@dimen/time_margin_bottom">
+
+    <include layout="@layout/desk_clock_time_date"
+        android:id="@+id/digital_clock"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:layout_gravity="center"
+        />
+    <com.android.deskclock.AnalogClock
+        android:id="@+id/analog_clock"
+        android:layout_width="@dimen/analog_clock_diameter"
+        android:layout_height="@dimen/analog_clock_diameter"
+        android:layout_gravity="center"
+        dc:jewelRadius="5dp"
+        dc:jewelOffset="23dp"
+        dc:jewelColor="@color/clock_white"
+        android:dial="@drawable/clock_analog_dial"
+        android:hand_hour="@drawable/clock_analog_hour"
+        android:hand_minute="@drawable/clock_analog_minute"
+        android:layout_marginBottom="@dimen/time_margin_bottom"/>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center" >
+        <TextView android:id="@+id/date"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:textColor="@color/clock_white"
+            style="@style/label"
+            android:gravity="center"
+            android:visibility="gone"
             />
-    </FrameLayout>
-
-</AbsoluteLayout>
+        <TextView android:id="@+id/nextAlarm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:drawablePadding="2dip"
+            android:drawableLeft="@drawable/ic_alarm_small"
+            android:textColor="@color/clock_gray"
+            style="@style/label"
+            android:layout_marginLeft="8dip"
+            android:gravity="center"
+            android:visibility="gone"
+            />
+    </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

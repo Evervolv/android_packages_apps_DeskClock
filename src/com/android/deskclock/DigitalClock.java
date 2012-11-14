@@ -21,30 +21,38 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.ContentObserver;
+import android.graphics.Typeface;
 import android.os.Handler;
 import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.util.AttributeSet;
 import android.view.View;
-import android.widget.RelativeLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import java.text.DateFormatSymbols;
 import java.util.Calendar;
+import java.util.TimeZone;
 
 /**
  * Displays the time
  */
-public class DigitalClock extends RelativeLayout {
+public class DigitalClock extends LinearLayout {
 
-    private final static String M12 = "h:mm";
+    private final static String HOURS_24 = "kk";
+    private final static String HOURS = "h";
+    private final static String MINUTES = ":mm";
 
     private Calendar mCalendar;
-    private String mFormat;
-    private AndroidClockTextView mTimeDisplay;
+    private String mHoursFormat;
+    private TextView mTimeDisplayHours, mTimeDisplayMinutes;
     private AmPm mAmPm;
     private ContentObserver mFormatChangeObserver;
     private boolean mLive = true;
     private boolean mAttached;
+    private final Typeface mRobotoThin;
+    private String mTimeZoneId;
+
 
     /* called by system on minute ticks */
     private final Handler mHandler = new Handler();
@@ -65,11 +73,11 @@ public class DigitalClock extends RelativeLayout {
         };
 
     static class AmPm {
-        private AndroidClockTextView mAmPm;
-        private String mAmString, mPmString;
+        private final TextView mAmPm;
+        private final String mAmString, mPmString;
 
         AmPm(View parent) {
-            mAmPm = (AndroidClockTextView) parent.findViewById(R.id.am_pm);
+            mAmPm = (TextView) parent.findViewById(R.id.am_pm);
 
             String[] ampm = new DateFormatSymbols().getAmPmStrings();
             mAmString = ampm[0];
@@ -77,11 +85,15 @@ public class DigitalClock extends RelativeLayout {
         }
 
         void setShowAmPm(boolean show) {
-            mAmPm.setVisibility(show ? View.VISIBLE : View.INVISIBLE);
+            mAmPm.setVisibility(show ? View.VISIBLE : View.GONE);
         }
 
         void setIsMorning(boolean isMorning) {
             mAmPm.setText(isMorning ? mAmString : mPmString);
+        }
+
+        CharSequence getAmPmText() {
+            return mAmPm.getText();
         }
     }
 
@@ -102,13 +114,16 @@ public class DigitalClock extends RelativeLayout {
 
     public DigitalClock(Context context, AttributeSet attrs) {
         super(context, attrs);
+        mRobotoThin = Typeface.createFromAsset(context.getAssets(),"fonts/Roboto-Thin.ttf");
     }
 
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
 
-        mTimeDisplay = (AndroidClockTextView) findViewById(R.id.timeDisplay);
+        mTimeDisplayHours = (TextView)findViewById(R.id.timeDisplayHours);
+        mTimeDisplayMinutes = (TextView)findViewById(R.id.timeDisplayMinutes);
+        mTimeDisplayMinutes.setTypeface(mRobotoThin);
         mAmPm = new AmPm(this);
         mCalendar = Calendar.getInstance();
 
@@ -161,22 +176,52 @@ public class DigitalClock extends RelativeLayout {
         updateTime();
     }
 
+    public void updateTime(int hour, int minute) {
+        // set the alarm text
+        final Calendar c = Calendar.getInstance();
+        c.set(Calendar.HOUR_OF_DAY, hour);
+        c.set(Calendar.MINUTE, minute);
+        mCalendar = c;
+        updateTime();
+    }
+
     private void updateTime() {
         if (mLive) {
             mCalendar.setTimeInMillis(System.currentTimeMillis());
         }
+        if (mTimeZoneId != null) {
+            mCalendar.setTimeZone(TimeZone.getTimeZone(mTimeZoneId));
+        }
 
-        CharSequence newTime = DateFormat.format(mFormat, mCalendar);
-        mTimeDisplay.setText(newTime);
-        mAmPm.setIsMorning(mCalendar.get(Calendar.AM_PM) == 0);
+        StringBuilder fullTimeStr = new StringBuilder();
+        CharSequence newTime = DateFormat.format(mHoursFormat, mCalendar);
+        mTimeDisplayHours.setText(newTime);
+        fullTimeStr.append(newTime);
+        newTime = DateFormat.format(MINUTES, mCalendar);
+        fullTimeStr.append(newTime);
+        mTimeDisplayMinutes.setText(newTime);
+
+        boolean isMorning = mCalendar.get(Calendar.AM_PM) == 0;
+        mAmPm.setIsMorning(isMorning);
+        if (!Alarms.get24HourMode(getContext())) {
+            fullTimeStr.append(mAmPm.getAmPmText());
+        }
+
+        // Update accessibility string.
+        setContentDescription(fullTimeStr);
     }
 
     private void setDateFormat() {
-        mFormat = Alarms.get24HourMode(getContext()) ? Alarms.M24 : M12;
-        mAmPm.setShowAmPm(mFormat == M12);
+        mHoursFormat = Alarms.get24HourMode(getContext()) ? HOURS_24 : HOURS;
+        mAmPm.setShowAmPm(!Alarms.get24HourMode(getContext()));
     }
 
     void setLive(boolean live) {
         mLive = live;
+    }
+
+    public void setTimeZone(String id) {
+        mTimeZoneId = id;
+        updateTime();
     }
 }

@@ -16,7 +16,7 @@
 
 package com.android.alarmclock;
 
-import com.android.deskclock.AlarmClock;
+import com.android.deskclock.DeskClock;
 import com.android.deskclock.R;
 
 import android.app.PendingIntent;
@@ -32,6 +32,7 @@ import android.widget.RemoteViews;
 public class AnalogAppWidgetProvider extends BroadcastReceiver {
     static final String TAG = "AnalogAppWidgetProvider";
 
+    @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
 
@@ -41,7 +42,7 @@ public class AnalogAppWidgetProvider extends BroadcastReceiver {
 
             views.setOnClickPendingIntent(R.id.analog_appwidget,
                     PendingIntent.getActivity(context, 0,
-                        new Intent(context, AlarmClock.class), 0));
+                        new Intent(context, DeskClock.class), 0));
 
             int[] appWidgetIds = intent.getIntArrayExtra(
                     AppWidgetManager.EXTRA_APPWIDGET_IDS);

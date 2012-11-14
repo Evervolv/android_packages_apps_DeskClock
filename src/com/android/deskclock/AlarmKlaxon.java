@@ -26,7 +26,6 @@ import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnErrorListener;
 import android.media.RingtoneManager;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -56,6 +55,7 @@ public class AlarmKlaxon extends Service {
     // Internal messages
     private static final int KILLER = 1000;
     private Handler mHandler = new Handler() {
+        @Override
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case KILLER:
@@ -98,6 +98,9 @@ public class AlarmKlaxon extends Service {
     @Override
     public void onDestroy() {
         stop();
+        Intent alarmDone = new Intent(Alarms.ALARM_DONE_ACTION);
+        sendBroadcast(alarmDone);
+
         // Stop listening for incoming calls.
         mTelephonyManager.listen(mPhoneStateListener, 0);
         AlarmAlertWakeLock.releaseCpuLock();
@@ -174,6 +177,7 @@ public class AlarmKlaxon extends Service {
             // RingtoneManager.
             mMediaPlayer = new MediaPlayer();
             mMediaPlayer.setOnErrorListener(new OnErrorListener() {
+                @Override
                 public boolean onError(MediaPlayer mp, int what, int extra) {
                     Log.e("Error occurred while playing audio.");
                     mp.stop();
@@ -258,9 +262,6 @@ public class AlarmKlaxon extends Service {
         if (Log.LOGV) Log.v("AlarmKlaxon.stop()");
         if (mPlaying) {
             mPlaying = false;
-
-            Intent alarmDone = new Intent(Alarms.ALARM_DONE_ACTION);
-            sendBroadcast(alarmDone);
 
             // Stop audio playing
             if (mMediaPlayer != null) {

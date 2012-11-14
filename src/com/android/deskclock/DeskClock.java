@@ -16,372 +16,73 @@
 
 package com.android.deskclock;
 
-import static android.os.BatteryManager.BATTERY_STATUS_UNKNOWN;
-
+import android.app.ActionBar;
+import android.app.ActionBar.Tab;
 import android.app.Activity;
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.app.UiModeManager;
-import android.content.BroadcastReceiver;
+import android.app.Fragment;
+import android.app.FragmentTransaction;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.res.Configuration;
-import android.os.BatteryManager;
+import android.content.SharedPreferences;
+import android.graphics.drawable.TransitionDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.provider.Settings;
-import android.text.TextUtils;
-import android.text.format.DateFormat;
-import android.util.DisplayMetrics;
+import android.preference.PreferenceManager;
+import android.support.v13.app.FragmentPagerAdapter;
+import android.support.v4.view.ViewPager;
 import android.util.Log;
 import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.Window;
-import android.view.WindowManager;
+import android.view.View.OnTouchListener;
+import android.view.animation.Animation;
+import android.view.animation.Animation.AnimationListener;
 import android.view.animation.AnimationUtils;
-import android.widget.AbsoluteLayout;
+import android.view.animation.TranslateAnimation;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 
-import java.util.Calendar;
-import java.util.Date;
-import java.util.Random;
+import com.android.deskclock.stopwatch.StopwatchFragment;
+import com.android.deskclock.stopwatch.StopwatchService;
+import com.android.deskclock.stopwatch.Stopwatches;
+import com.android.deskclock.timer.TimerFragment;
+import com.android.deskclock.timer.TimerObj;
+import com.android.deskclock.timer.Timers;
+import com.android.deskclock.worldclock.CitiesActivity;
+
+import java.util.ArrayList;
+import java.util.TimeZone;
 
 /**
  * DeskClock clock view for desk docks.
  */
-public class DeskClock extends Activity {
+public class DeskClock extends Activity implements LabelDialogFragment.TimerLabelDialogHandler {
     private static final boolean DEBUG = false;
 
     private static final String LOG_TAG = "DeskClock";
 
     // Alarm action for midnight (so we can update the date display).
-    private static final String ACTION_MIDNIGHT = "com.android.deskclock.MIDNIGHT";
-    private static final String KEY_DIMMED = "dimmed";
-    private static final String KEY_SCREEN_SAVER = "screen_saver";
+    private static final String KEY_SELECTED_TAB = "selected_tab";
+    private static final String KEY_CLOCK_STATE = "clock_state";
 
-    // This controls whether or not we will show a battery display when plugged
-    // in.
-    private static final boolean USE_BATTERY_DISPLAY = false;
+    public static final String SELECT_TAB_INTENT_EXTRA = "deskclock.select.tab";
 
-    // Intent to broadcast for dock settings.
-    private static final String DOCK_SETTINGS_ACTION = "com.android.settings.DOCK_SETTINGS";
+    private ActionBar mActionBar;
+    private Tab mTimerTab;
+    private Tab mClockTab;
+    private Tab mStopwatchTab;
 
-    // Delay before engaging the burn-in protection mode (green-on-black).
-    private final long SCREEN_SAVER_TIMEOUT = 5 * 60 * 1000; // 5 min
+    private ViewPager mViewPager;
+    private TabsAdapter mTabsAdapter;
 
-    // Repositioning delay in screen saver.
-    public static final long SCREEN_SAVER_MOVE_DELAY = 60 * 1000; // 1 min
+    public static final int TIMER_TAB_INDEX = 0;
+    public static final int CLOCK_TAB_INDEX = 1;
+    public static final int STOPWATCH_TAB_INDEX = 2;
 
-    // Color to use for text & graphics in screen saver mode.
-    private int SCREEN_SAVER_COLOR = 0xFF006688;
-    private int SCREEN_SAVER_COLOR_DIM = 0xFF001634;
-
-    // Opacity of black layer between clock display and wallpaper.
-    private final float DIM_BEHIND_AMOUNT_NORMAL = 0.4f;
-    private final float DIM_BEHIND_AMOUNT_DIMMED = 0.8f; // higher contrast when display dimmed
-
-    private final int SCREEN_SAVER_TIMEOUT_MSG   = 0x2000;
-    private final int SCREEN_SAVER_MOVE_MSG      = 0x2001;
-
-    // State variables follow.
-    private DigitalClock mTime;
-    private TextView mDate;
-
-    private TextView mNextAlarm = null;
-    private TextView mBatteryDisplay;
-
-    private boolean mDimmed = false;
-    private boolean mScreenSaverMode = false;
-
-    private String mDateFormat;
-
-    private int mBatteryLevel = -1;
-    private boolean mPluggedIn = false;
-
-    private boolean mLaunchedFromDock = false;
-
-    private Random mRNG;
-
-    private PendingIntent mMidnightIntent;
-
-    private final BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            if (DEBUG) Log.d(LOG_TAG, "mIntentReceiver.onReceive: action=" + action + ", intent=" + intent);
-            if (Intent.ACTION_DATE_CHANGED.equals(action) || ACTION_MIDNIGHT.equals(action)) {
-                refreshDate();
-            } else if (Intent.ACTION_BATTERY_CHANGED.equals(action)) {
-                handleBatteryUpdate(
-                    intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0),
-                    intent.getIntExtra(BatteryManager.EXTRA_STATUS, BATTERY_STATUS_UNKNOWN),
-                    intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0));
-            } else if (UiModeManager.ACTION_EXIT_DESK_MODE.equals(action)) {
-                if (mLaunchedFromDock) {
-                    // moveTaskToBack(false);
-                    finish();
-                }
-                mLaunchedFromDock = false;
-            } else if (Intent.ACTION_DOCK_EVENT.equals(action)) {
-                if (DEBUG) Log.d(LOG_TAG, "dock event extra "
-                        + intent.getExtras().getInt(Intent.EXTRA_DOCK_STATE));
-                if (mLaunchedFromDock && intent.getExtras().getInt(Intent.EXTRA_DOCK_STATE,
-                        Intent.EXTRA_DOCK_STATE_UNDOCKED) == Intent.EXTRA_DOCK_STATE_UNDOCKED) {
-                    finish();
-                    mLaunchedFromDock = false;
-                }
-            }
-        }
-    };
-
-    private final Handler mHandy = new Handler() {
-        @Override
-        public void handleMessage(Message m) {
-            if (m.what == SCREEN_SAVER_TIMEOUT_MSG) {
-                saveScreen();
-            } else if (m.what == SCREEN_SAVER_MOVE_MSG) {
-                moveScreenSaver();
-            }
-        }
-    };
-
-    private View mAlarmButton;
-
-    private void moveScreenSaver() {
-        moveScreenSaverTo(-1,-1);
-    }
-    private void moveScreenSaverTo(int x, int y) {
-        if (!mScreenSaverMode) return;
-
-        final View saver_view = findViewById(R.id.saver_view);
-
-        DisplayMetrics metrics = new DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(metrics);
-
-        if (x < 0 || y < 0) {
-            int myWidth = saver_view.getMeasuredWidth();
-            int myHeight = saver_view.getMeasuredHeight();
-            x = (int)(mRNG.nextFloat()*(metrics.widthPixels - myWidth));
-            y = (int)(mRNG.nextFloat()*(metrics.heightPixels - myHeight));
-        }
-
-        if (DEBUG) Log.d(LOG_TAG, String.format("screen saver: %d: jumping to (%d,%d)",
-                System.currentTimeMillis(), x, y));
-
-        saver_view.setLayoutParams(new AbsoluteLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            x,
-            y));
-
-        // Synchronize our jumping so that it happens exactly on the second.
-        mHandy.sendEmptyMessageDelayed(SCREEN_SAVER_MOVE_MSG,
-            SCREEN_SAVER_MOVE_DELAY +
-            (1000 - (System.currentTimeMillis() % 1000)));
-    }
-
-    private void setWakeLock(boolean hold) {
-        if (DEBUG) Log.d(LOG_TAG, (hold ? "hold" : " releas") + "ing wake lock");
-        Window win = getWindow();
-        WindowManager.LayoutParams winParams = win.getAttributes();
-        winParams.flags |= (WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                | WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        if (hold)
-            winParams.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-        else
-            winParams.flags &= (~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        win.setAttributes(winParams);
-    }
-
-    private void scheduleScreenSaver() {
-        if (!getResources().getBoolean(R.bool.config_requiresScreenSaver)) {
-            return;
-        }
-
-        // reschedule screen saver
-        mHandy.removeMessages(SCREEN_SAVER_TIMEOUT_MSG);
-        mHandy.sendMessageDelayed(
-            Message.obtain(mHandy, SCREEN_SAVER_TIMEOUT_MSG),
-            SCREEN_SAVER_TIMEOUT);
-    }
-
-    /**
-     * Restores the screen by quitting the screensaver. This should be called only when
-     * {@link #mScreenSaverMode} is true.
-     */
-    private void restoreScreen() {
-        if (!mScreenSaverMode) return;
-        if (DEBUG) Log.d(LOG_TAG, "restoreScreen");
-        mScreenSaverMode = false;
-
-        initViews();
-        doDim(false); // restores previous dim mode
-
-        scheduleScreenSaver();
-        refreshAll();
-    }
-
-    /**
-     * Start the screen-saver mode. This is useful for OLED displays that burn in quickly.
-     * This should only be called when {@link #mScreenSaverMode} is false;
-     */
-    private void saveScreen() {
-        if (mScreenSaverMode) return;
-        if (DEBUG) Log.d(LOG_TAG, "saveScreen");
-
-        // quickly stash away the x/y of the current date
-        final View oldTimeDate = findViewById(R.id.time_date);
-        int oldLoc[] = new int[2];
-        oldLoc[0] = oldLoc[1] = -1;
-        if (oldTimeDate != null) { // monkeys tell us this is not always around
-            oldTimeDate.getLocationOnScreen(oldLoc);
-        }
-
-        mScreenSaverMode = true;
-        Window win = getWindow();
-        WindowManager.LayoutParams winParams = win.getAttributes();
-        winParams.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
-        win.setAttributes(winParams);
-
-        // give up any internal focus before we switch layouts
-        final View focused = getCurrentFocus();
-        if (focused != null) focused.clearFocus();
-
-        setContentView(R.layout.desk_clock_saver);
-
-        mTime = (DigitalClock) findViewById(R.id.time);
-        mDate = (TextView) findViewById(R.id.date);
-
-        final int color = mDimmed ? SCREEN_SAVER_COLOR_DIM : SCREEN_SAVER_COLOR;
-
-        ((AndroidClockTextView)findViewById(R.id.timeDisplay)).setTextColor(color);
-        ((AndroidClockTextView)findViewById(R.id.am_pm)).setTextColor(color);
-        mDate.setTextColor(color);
-
-        mTime.setSystemUiVisibility(View.STATUS_BAR_HIDDEN);
-
-        mBatteryDisplay = null;
-
-        refreshDate();
-        refreshAlarm();
-
-        if (oldLoc[0] >= 0) {
-            moveScreenSaverTo(oldLoc[0], oldLoc[1]);
-        } else {
-            moveScreenSaver();
-        }
-    }
-
-    @Override
-    public void onUserInteraction() {
-        if (mScreenSaverMode)
-            restoreScreen();
-    }
-
-    // Adapted from KeyguardUpdateMonitor.java
-    private void handleBatteryUpdate(int plugged, int status, int level) {
-        final boolean pluggedIn = (plugged != 0);
-        if (pluggedIn != mPluggedIn) {
-            setWakeLock(pluggedIn);
-        }
-        if (pluggedIn != mPluggedIn || level != mBatteryLevel) {
-            mBatteryLevel = level;
-            mPluggedIn = pluggedIn;
-            refreshBattery();
-        }
-    }
-
-    private void refreshBattery() {
-        // UX wants the battery level removed. This makes it not visible but
-        // allows it to be easily turned back on if they change their mind.
-        if (!USE_BATTERY_DISPLAY)
-            return;
-        if (mBatteryDisplay == null) return;
-
-        if (mPluggedIn /* || mBatteryLevel < LOW_BATTERY_THRESHOLD */) {
-            mBatteryDisplay.setCompoundDrawablesWithIntrinsicBounds(
-                0, 0, android.R.drawable.ic_lock_idle_charging, 0);
-            mBatteryDisplay.setText(
-                getString(R.string.battery_charging_level, mBatteryLevel));
-            mBatteryDisplay.setVisibility(View.VISIBLE);
-        } else {
-            mBatteryDisplay.setVisibility(View.INVISIBLE);
-        }
-    }
-
-    private void refreshDate() {
-        final Date now = new Date();
-        if (DEBUG) Log.d(LOG_TAG, "refreshing date..." + now);
-        mDate.setText(DateFormat.format(mDateFormat, now));
-    }
-
-    private void refreshAlarm() {
-        if (mNextAlarm == null) return;
-
-        String nextAlarm = Settings.System.getString(getContentResolver(),
-                Settings.System.NEXT_ALARM_FORMATTED);
-        if (!TextUtils.isEmpty(nextAlarm)) {
-            mNextAlarm.setText(getString(R.string.control_set_alarm_with_existing, nextAlarm));
-            mNextAlarm.setVisibility(View.VISIBLE);
-        } else if (mAlarmButton != null) {
-            mNextAlarm.setVisibility(View.INVISIBLE);
-        } else {
-            mNextAlarm.setText(R.string.control_set_alarm);
-            mNextAlarm.setVisibility(View.VISIBLE);
-        }
-    }
-
-    private void refreshAll() {
-        refreshDate();
-        refreshAlarm();
-        refreshBattery();
-    }
-
-    private void doDim(boolean fade) {
-        View tintView = findViewById(R.id.window_tint);
-        if (tintView == null) return;
-
-        mTime.setSystemUiVisibility(mDimmed ? View.SYSTEM_UI_FLAG_LOW_PROFILE
-                : View.SYSTEM_UI_FLAG_VISIBLE);
-
-        Window win = getWindow();
-        WindowManager.LayoutParams winParams = win.getAttributes();
-
-        winParams.flags |= (WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
-        winParams.flags |= (WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-
-        // dim the wallpaper somewhat (how much is determined below)
-        winParams.flags |= (WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-
-        if (mDimmed) {
-            winParams.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
-            winParams.dimAmount = DIM_BEHIND_AMOUNT_DIMMED;
-            winParams.buttonBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF;
-
-            // show the window tint
-            tintView.startAnimation(AnimationUtils.loadAnimation(this,
-                fade ? R.anim.dim
-                     : R.anim.dim_instant));
-        } else {
-            winParams.flags &= (~WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            winParams.dimAmount = DIM_BEHIND_AMOUNT_NORMAL;
-            winParams.buttonBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
-
-            // hide the window tint
-            tintView.startAnimation(AnimationUtils.loadAnimation(this,
-                fade ? R.anim.undim
-                     : R.anim.undim_instant));
-        }
-
-        win.setAttributes(winParams);
-    }
+    private int mSelectedTab;
 
     @Override
     public void onNewIntent(Intent newIntent) {
@@ -391,197 +92,351 @@ public class DeskClock extends Activity {
         // update our intent so that we can consult it to determine whether or
         // not the most recent launch was via a dock event
         setIntent(newIntent);
-    }
 
-    @Override
-    public void onStart() {
-        super.onStart();
-
-        SCREEN_SAVER_COLOR = getResources().getColor(R.color.screen_saver_color);
-        SCREEN_SAVER_COLOR_DIM = getResources().getColor(R.color.screen_saver_dim_color);
-
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_DATE_CHANGED);
-        filter.addAction(Intent.ACTION_BATTERY_CHANGED);
-        filter.addAction(Intent.ACTION_DOCK_EVENT);
-        filter.addAction(UiModeManager.ACTION_EXIT_DESK_MODE);
-        filter.addAction(ACTION_MIDNIGHT);
-        registerReceiver(mIntentReceiver, filter);
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-
-        unregisterReceiver(mIntentReceiver);
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (DEBUG) Log.d(LOG_TAG, "onResume with intent: " + getIntent());
-
-        // reload the date format in case the user has changed settings
-        // recently
-        mDateFormat = getString(R.string.full_wday_month_day_no_year);
-
-        // Elaborate mechanism to find out when the day rolls over
-        Calendar today = Calendar.getInstance();
-        today.set(Calendar.HOUR_OF_DAY, 0);
-        today.set(Calendar.MINUTE, 0);
-        today.set(Calendar.SECOND, 0);
-        today.add(Calendar.DATE, 1);
-        long alarmTimeUTC = today.getTimeInMillis();
-
-        mMidnightIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_MIDNIGHT), 0);
-        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        am.setRepeating(AlarmManager.RTC, alarmTimeUTC, AlarmManager.INTERVAL_DAY, mMidnightIntent);
-        if (DEBUG) Log.d(LOG_TAG, "set repeating midnight event at UTC: "
-            + alarmTimeUTC + " ("
-            + (alarmTimeUTC - System.currentTimeMillis())
-            + " ms from now) repeating every "
-            + AlarmManager.INTERVAL_DAY + " with intent: " + mMidnightIntent);
-
-        // Adjust the display to reflect the currently chosen dim mode.
-        doDim(false);
-        if (!mScreenSaverMode) {
-            restoreScreen(); // disable screen saver
-        } else {
-            // we have to set it to false because savescreen returns early if
-            // it's true
-            mScreenSaverMode = false;
-            saveScreen();
+        // Timer receiver may ask to go to the timers fragment if a timer expired.
+        int tab = newIntent.getIntExtra(SELECT_TAB_INTENT_EXTRA, -1);
+        if (tab != -1) {
+            if (mActionBar != null) {
+                mActionBar.setSelectedNavigationItem(tab);
+            }
         }
-        refreshAll();
-        setWakeLock(mPluggedIn);
-        scheduleScreenSaver();
-
-        final boolean launchedFromDock
-            = getIntent().hasCategory(Intent.CATEGORY_DESK_DOCK);
-        mLaunchedFromDock = launchedFromDock;
-    }
-
-    @Override
-    public void onPause() {
-        if (DEBUG) Log.d(LOG_TAG, "onPause");
-
-        // Turn off the screen saver and cancel any pending timeouts.
-        // (But don't un-dim.)
-        mHandy.removeMessages(SCREEN_SAVER_TIMEOUT_MSG);
-
-        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        am.cancel(mMidnightIntent);
-
-        super.onPause();
     }
 
     private void initViews() {
-        // give up any internal focus before we switch layouts
-        final View focused = getCurrentFocus();
-        if (focused != null) focused.clearFocus();
 
-        setContentView(R.layout.desk_clock);
-
-        mTime = (DigitalClock) findViewById(R.id.time);
-        mDate = (TextView) findViewById(R.id.date);
-        mBatteryDisplay = (TextView) findViewById(R.id.battery);
-
-        mTime.setSystemUiVisibility(View.STATUS_BAR_VISIBLE);
-        mTime.getRootView().requestFocus();
-
-        final View.OnClickListener alarmClickListener = new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (mDimmed) {
-                    mDimmed = false;
-                    doDim(true);
-                }
-                startActivity(new Intent(DeskClock.this, AlarmClock.class));
-            }
-        };
-
-        mNextAlarm = (TextView) findViewById(R.id.nextAlarm);
-        mNextAlarm.setOnClickListener(alarmClickListener);
-
-        mAlarmButton = findViewById(R.id.alarm_button);
-        View alarmControl = mAlarmButton != null ? mAlarmButton : findViewById(R.id.nextAlarm);
-        alarmControl.setOnClickListener(alarmClickListener);
-
-        View touchView = findViewById(R.id.window_touch);
-        touchView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // If the screen saver is on let onUserInteraction handle it
-                if (!mScreenSaverMode) {
-                    mDimmed = !mDimmed;
-                    doDim(true);
-                }
-            }
-        });
-        touchView.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                saveScreen();
-                return true;
-            }
-        });
-    }
-
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        if (mScreenSaverMode) {
-            moveScreenSaver();
-        } else {
-            initViews();
-            doDim(false);
-            refreshAll();
+        if (mTabsAdapter == null) {
+            mViewPager = new ViewPager(this);
+            mViewPager.setId(R.id.desk_clock_pager);
+            mTabsAdapter = new TabsAdapter(this, mViewPager);
+            createTabs(mSelectedTab);
         }
+        setContentView(mViewPager);
+        mActionBar.setSelectedNavigationItem(mSelectedTab);
     }
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.menu_item_dock_settings:
-                startActivity(new Intent(DOCK_SETTINGS_ACTION));
-                return true;
-            default:
-                return false;
+    private void createTabs(int selectedIndex) {
+        mActionBar = getActionBar();
+
+        mActionBar.setDisplayOptions(0);
+        if (mActionBar != null) {
+            mActionBar.setNavigationMode(ActionBar.NAVIGATION_MODE_TABS);
+            mTimerTab = mActionBar.newTab();
+            mTimerTab.setIcon(R.drawable.timer_tab);
+            mTimerTab.setContentDescription(R.string.menu_timer);
+            mTabsAdapter.addTab(mTimerTab, TimerFragment.class,TIMER_TAB_INDEX);
+
+            mClockTab = mActionBar.newTab();
+            mClockTab.setIcon(R.drawable.clock_tab);
+            mClockTab.setContentDescription(R.string.menu_clock);
+            mTabsAdapter.addTab(mClockTab, ClockFragment.class,CLOCK_TAB_INDEX);
+            mStopwatchTab = mActionBar.newTab();
+            mStopwatchTab.setIcon(R.drawable.stopwatch_tab);
+            mStopwatchTab.setContentDescription(R.string.menu_stopwatch);
+            mTabsAdapter.addTab(mStopwatchTab, StopwatchFragment.class,STOPWATCH_TAB_INDEX);
+            mActionBar.setSelectedNavigationItem(selectedIndex);
         }
-    }
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.desk_clock_menu, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
-        // Only show the "Dock settings" menu item if the device supports it.
-        boolean isDockSupported =
-                (getPackageManager().resolveActivity(new Intent(DOCK_SETTINGS_ACTION), 0) != null);
-        menu.findItem(R.id.menu_item_dock_settings).setVisible(isDockSupported);
-        return super.onPrepareOptionsMenu(menu);
     }
 
     @Override
     protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
 
-        mRNG = new Random();
+        mSelectedTab = CLOCK_TAB_INDEX;
         if (icicle != null) {
-            mDimmed = icicle.getBoolean(KEY_DIMMED, false);
-            mScreenSaverMode = icicle.getBoolean(KEY_SCREEN_SAVER, false);
+            mSelectedTab = icicle.getInt(KEY_SELECTED_TAB, CLOCK_TAB_INDEX);
         }
 
+        // Timer receiver may ask the app to go to the timer fragment if a timer expired
+        Intent i = getIntent();
+        if (i != null) {
+            int tab = i.getIntExtra(SELECT_TAB_INTENT_EXTRA, -1);
+            if (tab != -1) {
+                mSelectedTab = tab;
+            }
+        }
         initViews();
+        setHomeTimeZone();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        Intent stopwatchIntent = new Intent(getApplicationContext(), StopwatchService.class);
+        stopwatchIntent.setAction(Stopwatches.KILL_NOTIF);
+        startService(stopwatchIntent);
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putBoolean(Timers.NOTIF_APP_OPEN, true);
+        editor.apply();
+        Intent timerIntent = new Intent();
+        timerIntent.setAction(Timers.NOTIF_IN_USE_CANCEL);
+        sendBroadcast(timerIntent);
+    }
+
+    @Override
+    public void onPause() {
+
+        Intent intent = new Intent(getApplicationContext(), StopwatchService.class);
+        intent.setAction(Stopwatches.SHOW_NOTIF);
+        startService(intent);
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putBoolean(Timers.NOTIF_APP_OPEN, false);
+        editor.apply();
+        Utils.showInUseNotifications(this);
+
+        super.onPause();
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        outState.putBoolean(KEY_DIMMED, mDimmed);
-        outState.putBoolean(KEY_SCREEN_SAVER, mScreenSaverMode);
+        super.onSaveInstanceState(outState);
+        outState.putInt(KEY_SELECTED_TAB, mActionBar.getSelectedNavigationIndex());
+    }
+
+    public void clockButtonsOnClick(View v) {
+        if (v == null)
+            return;
+        switch (v.getId()) {
+            case R.id.alarms_button:
+                startActivity(new Intent(this, AlarmClock.class));
+                break;
+            case R.id.cities_button:
+                startActivity(new Intent(this, CitiesActivity.class));
+                break;
+            case R.id.menu_button:
+                showMenu(v);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void showMenu(View v) {
+        PopupMenu popupMenu = new PopupMenu(this, v);
+        popupMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener () {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                switch (item.getItemId()) {
+                    case R.id.menu_item_settings:
+                        startActivity(new Intent(DeskClock.this, SettingsActivity.class));
+                        return true;
+                    case R.id.menu_item_help:
+                        Intent i = item.getIntent();
+                        if (i != null) {
+                            try {
+                                startActivity(i);
+                            } catch (ActivityNotFoundException e) {
+                                // No activity found to match the intent - ignore
+                            }
+                        }
+                        return true;
+                    case R.id.menu_item_night_mode:
+                        startActivity(new Intent(DeskClock.this, ScreensaverActivity.class));
+                    default:
+                        break;
+                }
+                return true;
+            }
+        });
+        popupMenu.inflate(R.menu.desk_clock_menu);
+
+        Menu menu = popupMenu.getMenu();
+        MenuItem help = menu.findItem(R.id.menu_item_help);
+        if (help != null) {
+            Utils.prepareHelpMenuItem(this, help);
+        }
+        popupMenu.show();
+    }
+
+    /***
+     * Insert the local time zone as the Home Time Zone if one is not set
+     */
+    private void setHomeTimeZone() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String homeTimeZone = prefs.getString(SettingsActivity.KEY_HOME_TZ, "");
+        if (!homeTimeZone.isEmpty()) {
+        return;
+        }
+        homeTimeZone = TimeZone.getDefault().getID();
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putString(SettingsActivity.KEY_HOME_TZ, homeTimeZone);
+        editor.apply();
+        Log.v(LOG_TAG, "Setting home time zone to " + homeTimeZone);
+    }
+
+    public boolean isClockTab() {
+        return mViewPager.getCurrentItem() == CLOCK_TAB_INDEX;
+    }
+
+    /***
+     * Adapter for wrapping together the ActionBar's tab with the ViewPager
+     */
+
+    private class TabsAdapter extends FragmentPagerAdapter
+            implements ActionBar.TabListener, ViewPager.OnPageChangeListener {
+
+        private static final String KEY_TAB_POSITION = "tab_position";
+
+        final class TabInfo {
+            private final Class<?> clss;
+            private final Bundle args;
+
+            TabInfo(Class<?> _class, int position) {
+                clss = _class;
+                args = new Bundle();
+                args.putInt(KEY_TAB_POSITION, position);
+            }
+
+            public int getPosition() {
+                return args.getInt(KEY_TAB_POSITION, 0);
+            }
+        }
+
+        private final ArrayList<TabInfo> mTabs = new ArrayList <TabInfo>();
+        ActionBar mMainActionBar;
+        Context mContext;
+        ViewPager mPager;
+
+        public TabsAdapter(Activity activity, ViewPager pager) {
+            super(activity.getFragmentManager());
+            mContext = activity;
+            mMainActionBar = activity.getActionBar();
+            mPager = pager;
+            mPager.setAdapter(this);
+            mPager.setOnPageChangeListener(this);
+        }
+
+        @Override
+        public Fragment getItem(int position) {
+            TabInfo info = mTabs.get(position);
+            DeskClockFragment f = (DeskClockFragment) Fragment.instantiate(
+                    mContext, info.clss.getName(), info.args);
+            return f;
+        }
+
+        @Override
+        public int getCount() {
+            return mTabs.size();
+        }
+
+        public void addTab(ActionBar.Tab tab, Class<?> clss, int position) {
+            TabInfo info = new TabInfo(clss, position);
+            tab.setTag(info);
+            tab.setTabListener(this);
+            mTabs.add(info);
+            mMainActionBar.addTab(tab);
+            notifyDataSetChanged();
+        }
+
+        @Override
+        public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+            // Do nothing
+        }
+
+        @Override
+        public void onPageSelected(int position) {
+            mMainActionBar.setSelectedNavigationItem(position);
+        }
+
+        @Override
+        public void onPageScrollStateChanged(int state) {
+            // Do nothing
+        }
+
+        @Override
+        public void onTabReselected(Tab arg0, FragmentTransaction arg1) {
+            // Do nothing
+        }
+
+        @Override
+        public void onTabSelected(Tab tab, FragmentTransaction ft) {
+            TabInfo info = (TabInfo)tab.getTag();
+            mPager.setCurrentItem(info.getPosition());
+        }
+
+        @Override
+        public void onTabUnselected(Tab arg0, FragmentTransaction arg1) {
+            // Do nothing
+
+        }
+    }
+
+    public static abstract class OnTapListener implements OnTouchListener {
+        private float mLastTouchX;
+        private float mLastTouchY;
+        private long mLastTouchTime;
+        private TextView mMakePressedTextView;
+        private int mPressedColor, mGrayColor;
+        private final float MAX_MOVEMENT_ALLOWED = 20;
+        private final long MAX_TIME_ALLOWED = 500;
+
+        public OnTapListener(Activity activity, TextView makePressedView) {
+            mMakePressedTextView = makePressedView;
+            mPressedColor = activity.getResources().getColor(Utils.getPressedColorId());
+            mGrayColor = activity.getResources().getColor(Utils.getGrayColorId());
+        }
+
+        @Override
+        public boolean onTouch(View v, MotionEvent e) {
+            switch (e.getAction()) {
+                case (MotionEvent.ACTION_DOWN):
+                    mLastTouchTime = Utils.getTimeNow();
+                    mLastTouchX = e.getX();
+                    mLastTouchY = e.getY();
+                    if (mMakePressedTextView != null) {
+                        mMakePressedTextView.setTextColor(mPressedColor);
+                    }
+                    break;
+                case (MotionEvent.ACTION_UP):
+                    float xDiff = Math.abs(e.getX()-mLastTouchX);
+                    float yDiff = Math.abs(e.getY()-mLastTouchY);
+                    long timeDiff = (Utils.getTimeNow() - mLastTouchTime);
+                    if (xDiff < MAX_MOVEMENT_ALLOWED && yDiff < MAX_MOVEMENT_ALLOWED
+                            && timeDiff < MAX_TIME_ALLOWED) {
+                        if (mMakePressedTextView != null) {
+                            v = mMakePressedTextView;
+                        }
+                        processClick(v);
+                        resetValues();
+                        return true;
+                    }
+                    resetValues();
+                    break;
+                case (MotionEvent.ACTION_MOVE):
+                    xDiff = Math.abs(e.getX()-mLastTouchX);
+                    yDiff = Math.abs(e.getY()-mLastTouchY);
+                    if (xDiff >= MAX_MOVEMENT_ALLOWED || yDiff >= MAX_MOVEMENT_ALLOWED) {
+                        resetValues();
+                    }
+                    break;
+                default:
+                    resetValues();
+            }
+            return false;
+        }
+
+        private void resetValues() {
+            mLastTouchX = -1*MAX_MOVEMENT_ALLOWED + 1;
+            mLastTouchY = -1*MAX_MOVEMENT_ALLOWED + 1;
+            mLastTouchTime = -1*MAX_TIME_ALLOWED + 1;
+            if (mMakePressedTextView != null) {
+                mMakePressedTextView.setTextColor(mGrayColor);
+            }
+        }
+
+        protected abstract void processClick(View v);
+    }
+
+    /** Called by the LabelDialogFormat class after the dialog is finished. **/
+    @Override
+    public void onDialogLabelSet(TimerObj timer, String label, String tag) {
+        Fragment frag = getFragmentManager().findFragmentByTag(tag);
+        if (frag instanceof TimerFragment) {
+            ((TimerFragment) frag).setLabel(timer, label);
+        }
     }
 }

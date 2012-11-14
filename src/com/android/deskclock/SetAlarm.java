@@ -18,10 +18,8 @@ package com.android.deskclock;
 
 import android.app.ActionBar;
 import android.app.AlertDialog;
-import android.app.TimePickerDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
@@ -30,7 +28,6 @@ import android.preference.CheckBoxPreference;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
-import android.text.format.DateFormat;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -39,14 +36,12 @@ import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.TimePicker;
-import android.widget.Toast;
 
 /**
  * Manages each alarm
  */
 public class SetAlarm extends PreferenceActivity implements Preference.OnPreferenceChangeListener,
-        TimePickerDialog.OnTimeSetListener, OnCancelListener {
+        AlarmTimePickerDialogFragment.AlarmTimePickerDialogHandler {
 
     private static final String KEY_CURRENT_ALARM = "currentAlarm";
     private static final String KEY_ORIGINAL_ALARM = "originalAlarm";
@@ -62,7 +57,6 @@ public class SetAlarm extends PreferenceActivity implements Preference.OnPrefere
     private int     mId;
     private int     mHour;
     private int     mMinute;
-    private TimePickerDialog mTimePickerDialog;
     private Alarm   mOriginalAlarm;
 
     @Override
@@ -140,7 +134,7 @@ public class SetAlarm extends PreferenceActivity implements Preference.OnPrefere
                     public void onClick(View v) {
                         long time = saveAlarm(null);
                         if(mEnabledPref.isChecked()) {
-                            popAlarmSetToast(SetAlarm.this, time);
+                            AlarmUtils.popAlarmSetToast(SetAlarm.this, time);
                         }
                         finish();
                     }
@@ -191,14 +185,6 @@ public class SetAlarm extends PreferenceActivity implements Preference.OnPrefere
         super.onSaveInstanceState(outState);
         outState.putParcelable(KEY_ORIGINAL_ALARM, mOriginalAlarm);
         outState.putParcelable(KEY_CURRENT_ALARM, buildAlarmFromUi());
-        if (mTimePickerDialog != null) {
-            if (mTimePickerDialog.isShowing()) {
-                outState.putParcelable(KEY_TIME_PICKER_BUNDLE, mTimePickerDialog
-                        .onSaveInstanceState());
-                mTimePickerDialog.dismiss();
-            }
-            mTimePickerDialog = null;
-        }
     }
 
     @Override
@@ -218,7 +204,6 @@ public class SetAlarm extends PreferenceActivity implements Preference.OnPrefere
         Bundle b = state.getParcelable(KEY_TIME_PICKER_BUNDLE);
         if (b != null) {
             showTimePicker();
-            mTimePickerDialog.onRestoreInstanceState(b);
         }
     }
 
@@ -269,36 +254,18 @@ public class SetAlarm extends PreferenceActivity implements Preference.OnPrefere
     }
 
     private void showTimePicker() {
-        if (mTimePickerDialog != null) {
-            if (mTimePickerDialog.isShowing()) {
-                Log.e("mTimePickerDialog is already showing.");
-                mTimePickerDialog.dismiss();
-            } else {
-                Log.e("mTimePickerDialog is not null");
-            }
-            mTimePickerDialog = null;
-        }
-
-        mTimePickerDialog = new TimePickerDialog(this, this, mHour, mMinute,
-                DateFormat.is24HourFormat(this));
-        mTimePickerDialog.setOnCancelListener(this);
-        mTimePickerDialog.show();
+        AlarmUtils.showTimeEditDialog(getFragmentManager(), null);
     }
 
-    public void onTimeSet(TimePicker view, int hourOfDay, int minute) {
+    @Override
+    public void onDialogTimeSet(Alarm alarm, int hourOfDay, int minute) {
         // onTimeSet is called when the user clicks "Set"
-        mTimePickerDialog = null;
         mHour = hourOfDay;
         mMinute = minute;
         updateTime();
         // If the time has been changed, enable the alarm.
         mEnabledPref.setChecked(true);
         saveAlarm(null);
-    }
-
-    @Override
-    public void onCancel(DialogInterface dialog) {
-        mTimePickerDialog = null;
     }
 
     private void updateTime() {
@@ -373,27 +340,9 @@ public class SetAlarm extends PreferenceActivity implements Preference.OnPrefere
     private void saveAndExit() {
         long time = saveAlarm(null);
         if(mEnabledPref.isChecked()) {
-            popAlarmSetToast(SetAlarm.this, time);
+            AlarmUtils.popAlarmSetToast(SetAlarm.this, time);
         }
         finish();
-    }
-
-    /**
-     * Display a toast that tells the user how long until the alarm
-     * goes off.  This helps prevent "am/pm" mistakes.
-     */
-    static void popAlarmSetToast(Context context, int hour, int minute,
-                                 Alarm.DaysOfWeek daysOfWeek) {
-        popAlarmSetToast(context,
-                Alarms.calculateAlarm(hour, minute, daysOfWeek)
-                .getTimeInMillis());
-    }
-
-    static void popAlarmSetToast(Context context, long timeInMillis) {
-        String toastText = formatToast(context, timeInMillis);
-        Toast toast = Toast.makeText(context, toastText, Toast.LENGTH_LONG);
-        ToastMaster.setToast(toast);
-        toast.show();
     }
 
     /**

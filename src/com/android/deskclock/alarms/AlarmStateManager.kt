@@ -187,6 +187,15 @@ class AlarmStateManager : BroadcastReceiver() {
         // Schedules alarm state transitions; can be mocked for testing purposes.
         private var sStateChangeScheduler: StateChangeScheduler = AlarmManagerStateChangeScheduler()
 
+
+        private const val ACTION_SET_POWEROFF_ALARM =
+                "org.codeaurora.poweroffalarm.action.SET_ALARM"
+        private const val ACTION_CANCEL_POWEROFF_ALARM =
+                "org.codeaurora.poweroffalarm.action.CANCEL_ALARM"
+        private const val POWER_OFF_ALARM_PACKAGE =
+                "com.qualcomm.qti.poweroffalarm"
+        private const val TIME = "time"
+
         private val currentTime: Calendar
             get() = (if (sCurrentTimeFactory == null) {
                 DataModel.dataModel.calendar
@@ -208,6 +217,10 @@ class AlarmStateManager : BroadcastReceiver() {
          */
         private fun updateNextAlarm(context: Context) {
             val nextAlarm = getNextFiringAlarm(context)
+
+            if (nextAlarm != null) {
+                setPowerOffAlarm(context, nextAlarm)
+            }
 
             if (Utils.isPreL) {
                 updateNextAlarmInSystemSettings(context, nextAlarm)
@@ -600,6 +613,7 @@ class AlarmStateManager : BroadcastReceiver() {
             scheduleInstanceStateChange(context, instance.missedTimeToLive,
                     instance, InstancesColumns.DISMISSED_STATE)
 
+            cancelPowerOffAlarm(context, instance)
             // Instance is not valid anymore, so find next alarm that will fire and notify system
             updateNextAlarm(context)
         }
@@ -630,17 +644,20 @@ class AlarmStateManager : BroadcastReceiver() {
                 updateParentAlarm(context, instance)
             }
 
+            cancelPowerOffAlarm(context, instance)
             updateNextAlarm(context)
         }
 
         /**
          * This just sets the alarm instance to DISMISSED_STATE.
          */
-        private fun setDismissState(context: Context, instance: AlarmInstance) {
+        public fun setDismissState(context: Context, instance: AlarmInstance) {
             LogUtils.i("Setting dismissed state to instance " + instance.mId)
             instance.mAlarmState = InstancesColumns.DISMISSED_STATE
             val contentResolver: ContentResolver = context.getContentResolver()
             AlarmInstance.updateInstance(contentResolver, instance)
+
+            cancelPowerOffAlarm(context, instance)
         }
 
         /**
@@ -1006,6 +1023,22 @@ class AlarmStateManager : BroadcastReceiver() {
          */
         private fun createIndicatorIntent(context: Context?): Intent {
             return Intent(context, AlarmStateManager::class.java).setAction(INDICATOR_ACTION)
+        }
+
+        private fun setPowerOffAlarm(context: Context, instance: AlarmInstance) {
+             LogUtils.i("Set next power off alarm : instance id "+ instance.mId)
+             var intent = Intent(ACTION_SET_POWEROFF_ALARM)
+             intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+             intent.setPackage(POWER_OFF_ALARM_PACKAGE)
+             intent.putExtra(TIME, instance.alarmTime.getTimeInMillis())
+             context.sendBroadcast(intent)
+        }
+        private fun cancelPowerOffAlarm(context: Context, instance: AlarmInstance) {
+             var intent = Intent(ACTION_CANCEL_POWEROFF_ALARM)
+             intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+             intent.putExtra(TIME, instance.alarmTime.getTimeInMillis())
+             intent.setPackage(POWER_OFF_ALARM_PACKAGE)
+             context.sendBroadcast(intent)
         }
     }
 }

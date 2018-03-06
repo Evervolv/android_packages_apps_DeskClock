@@ -18,13 +18,19 @@ package com.android.deskclock
 
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 
 import com.android.deskclock.AlarmAlertWakeLock.createPartialWakeLock
 import com.android.deskclock.alarms.AlarmStateManager
+import com.android.deskclock.alarms.AlarmNotifications
+import com.android.deskclock.provider.AlarmInstance
+import com.android.deskclock.provider.ClockContract.InstancesColumns
 import com.android.deskclock.controller.Controller
 import com.android.deskclock.data.DataModel
+
+import java.util.Calendar
 
 class AlarmInitReceiver : BroadcastReceiver() {
     /**
@@ -75,6 +81,39 @@ class AlarmInitReceiver : BroadcastReceiver() {
             Controller.getController().updateShortcuts()
         }
 
+        if (ACTION_UPDATE_ALARM_STATUS == action) {
+            val alarmTime = intent.getLongExtra(TIME, 0)
+            val alarmStatus = intent.getIntExtra(STATUS, 0)
+
+            if (alarmTime != 0L) {
+                var cr = context.getContentResolver()
+                val alarmInstances = AlarmInstance.getInstances(cr, null)
+                var alarmInstance: AlarmInstance? = null
+                for (instance in alarmInstances) {
+                    if (instance.alarmTime.getTimeInMillis() == alarmTime) {
+                        alarmInstance = instance
+                        break
+                    }
+                }
+                if (alarmInstance != null) {
+                    // Update alarm status if the alarm instance is not null
+                    if (alarmStatus == DISMISS_STATUS) {
+                        AlarmStateManager.setDismissState(context, alarmInstance)
+                    } else if (alarmStatus == SNOOZE_STATUS){
+                        val snoozeTime = intent.getLongExtra(SNOOZE_TIME, 0L)
+                        if (snoozeTime > System.currentTimeMillis()) {
+                            AlarmNotifications.clearNotification(context, alarmInstance)
+                            var c = Calendar.getInstance()
+                            c.setTimeInMillis(snoozeTime)
+                            alarmInstance.alarmTime = c
+                            alarmInstance.mAlarmState = InstancesColumns.SNOOZE_STATE
+                            AlarmInstance.updateInstance(cr, alarmInstance)
+                        }
+                    }
+                }
+            }
+        }
+
         AsyncHandler.post {
             try {
                 // Process restored data if any exists
@@ -101,5 +140,15 @@ class AlarmInitReceiver : BroadcastReceiver() {
         } else {
             Intent.ACTION_BOOT_COMPLETED
         }
+
+        private const val ACTION_UPDATE_ALARM_STATUS =
+            "org.codeaurora.poweroffalarm.action.UPDATE_ALARM"
+
+        private const val SNOOZE_STATUS = 2
+        private const val DISMISS_STATUS = 3
+
+        private const val STATUS = "status"
+        private const val TIME = "time"
+        private const val SNOOZE_TIME = "snooze_time"
     }
 }

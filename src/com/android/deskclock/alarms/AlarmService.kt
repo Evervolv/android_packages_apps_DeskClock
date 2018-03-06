@@ -214,7 +214,8 @@ class AlarmService : Service() {
                 mPhoneCallState = state
             }
 
-            if (state != TelephonyManager.CALL_STATE_IDLE && state != mPhoneCallState) {
+            if (state != TelephonyManager.CALL_STATE_IDLE && state != mPhoneCallState
+                    && mCurrentAlarm != null) {
                 startService(AlarmStateManager.createStateChangeIntent(this@AlarmService,
                         "AlarmService", mCurrentAlarm!!, InstancesColumns.MISSED_STATE))
             }

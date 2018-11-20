@@ -20,6 +20,7 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -124,6 +125,11 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
     /** `true` when a settings change necessitates recreating this activity.  */
     private var mRecreateActivity = false
 
+    companion object {
+        private const val PERMISSION_POWER_OFF_ALARM = "org.codeaurora.permission.POWER_OFF_ALARM"
+        private const val CODE_FOR_ALARM_PERMISSION = 1
+    }
+
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
 
@@ -136,6 +142,8 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
 
         setContentView(R.layout.desk_clock)
         mSnackbarAnchor = findViewById(R.id.content)
+
+        checkPermissions()
 
         // Configure the toolbar.
         val toolbar: Toolbar = findViewById(R.id.toolbar) as Toolbar
@@ -399,6 +407,20 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
         if (requestCode == SettingsMenuItemController.REQUEST_CHANGE_SETTINGS &&
                 resultCode == RESULT_OK) {
             mRecreateActivity = true
+        }
+    }
+
+    private fun checkPermissions() {
+        if (checkSelfPermission(PERMISSION_POWER_OFF_ALARM)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf<String>(PERMISSION_POWER_OFF_ALARM), CODE_FOR_ALARM_PERMISSION)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+            requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        if (requestCode == CODE_FOR_ALARM_PERMISSION){
+            LogUtils.i("Power off alarm permission is granted.")
         }
     }
 

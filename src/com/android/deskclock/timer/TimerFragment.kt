@@ -209,7 +209,7 @@ class TimerFragment : DeskClockFragment(UiDataModel.Tab.TIMERS) {
         }
     }
 
-    private fun updateFab(fab: ImageView, animate: Boolean) {
+    private fun updateFab(fab: ImageView) {
         if (mCurrentView === mTimersView) {
             val timer = timer
             if (timer == null) {
@@ -220,37 +220,25 @@ class TimerFragment : DeskClockFragment(UiDataModel.Tab.TIMERS) {
             fab.visibility = View.VISIBLE
             when (timer.state) {
                 Timer.State.RUNNING -> {
-                    if (animate) {
-                        fab.setImageResource(R.drawable.ic_play_pause_animation)
-                    } else {
-                        fab.setImageResource(R.drawable.ic_play_pause)
-                    }
+                    fab.setImageResource(R.drawable.ic_pause_24dp)
                     fab.contentDescription = fab.resources.getString(R.string.timer_stop)
                 }
                 Timer.State.RESET -> {
-                    if (animate) {
-                        fab.setImageResource(R.drawable.ic_stop_play_animation)
-                    } else {
-                        fab.setImageResource(R.drawable.ic_pause_play)
-                    }
+                    fab.setImageResource(R.drawable.ic_start_24dp)
                     fab.contentDescription = fab.resources.getString(R.string.timer_start)
                 }
                 Timer.State.PAUSED -> {
-                    if (animate) {
-                        fab.setImageResource(R.drawable.ic_pause_play_animation)
-                    } else {
-                        fab.setImageResource(R.drawable.ic_pause_play)
-                    }
+                    fab.setImageResource(R.drawable.ic_start_24dp)
                     fab.contentDescription = fab.resources.getString(R.string.timer_start)
                 }
                 Timer.State.MISSED, Timer.State.EXPIRED -> {
-                    fab.setImageResource(R.drawable.ic_stop_white_24dp)
+                    fab.setImageResource(R.drawable.ic_stop_24dp)
                     fab.contentDescription = fab.resources.getString(R.string.timer_stop)
                 }
             }
         } else if (mCurrentView === mCreateTimerView) {
             if (mCreateTimerView.hasValidInput()) {
-                fab.setImageResource(R.drawable.ic_start_white_24dp)
+                fab.setImageResource(R.drawable.ic_start_24dp)
                 fab.contentDescription = fab.resources.getString(R.string.timer_start)
                 fab.visibility = View.VISIBLE
             } else {
@@ -261,12 +249,12 @@ class TimerFragment : DeskClockFragment(UiDataModel.Tab.TIMERS) {
     }
 
     override fun onUpdateFab(fab: ImageView) {
-        updateFab(fab, false)
+        updateFab(fab)
     }
 
     override fun onMorphFab(fab: ImageView) {
         // Update the fab's drawable to match the current timer state.
-        updateFab(fab, Utils.isNOrLater)
+        updateFab(fab)
         // Animate the drawable.
         AnimatorUtils.startDrawableAnimation(fab)
     }

@@ -230,32 +230,24 @@ class StopwatchFragment : DeskClockFragment(UiDataModel.Tab.STOPWATCH) {
         }
     }
 
-    private fun updateFab(fab: ImageView, animate: Boolean) {
+    private fun updateFab(fab: ImageView) {
         if (stopwatch.isRunning) {
-            if (animate) {
-                fab.setImageResource(R.drawable.ic_play_pause_animation)
-            } else {
-                fab.setImageResource(R.drawable.ic_play_pause)
-            }
+            fab.setImageResource(R.drawable.ic_pause_24dp)
             fab.setContentDescription(fab.getResources().getString(R.string.sw_pause_button))
         } else {
-            if (animate) {
-                fab.setImageResource(R.drawable.ic_pause_play_animation)
-            } else {
-                fab.setImageResource(R.drawable.ic_pause_play)
-            }
+            fab.setImageResource(R.drawable.ic_start_24dp)
             fab.setContentDescription(fab.getResources().getString(R.string.sw_start_button))
         }
         fab.setVisibility(VISIBLE)
     }
 
     override fun onUpdateFab(fab: ImageView) {
-        updateFab(fab, false)
+        updateFab(fab)
     }
 
     override fun onMorphFab(fab: ImageView) {
         // Update the fab's drawable to match the current timer state.
-        updateFab(fab, Utils.isNOrLater)
+        updateFab(fab)
         // Animate the drawable.
         AnimatorUtils.startDrawableAnimation(fab)
     }

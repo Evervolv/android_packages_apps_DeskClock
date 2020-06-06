@@ -348,7 +348,7 @@ class AlarmClockFragment : DeskClockFragment(UiDataModel.Tab.ALARMS),
 
     override fun onUpdateFab(fab: ImageView) {
         fab.visibility = View.VISIBLE
-        fab.setImageResource(R.drawable.ic_add_white_24dp)
+        fab.setImageResource(R.drawable.ic_add_24dp)
         fab.contentDescription = fab.resources.getString(R.string.button_alarms)
     }
 

@@ -98,8 +98,8 @@ abstract class AlarmItemViewHolder(itemView: View)
     }
 
     companion object {
-        private const val CLOCK_ENABLED_ALPHA = 1f
-        private const val CLOCK_DISABLED_ALPHA = 0.69f
+        const val CLOCK_ENABLED_ALPHA = 1f
+        const val CLOCK_DISABLED_ALPHA = 0.69f
 
         const val ANIM_STANDARD_DELAY_MULTIPLIER = 1f / 6f
         const val ANIM_LONG_DURATION_MULTIPLIER = 2f / 3f

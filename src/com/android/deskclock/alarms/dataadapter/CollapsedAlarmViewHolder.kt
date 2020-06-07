@@ -47,6 +47,8 @@ class CollapsedAlarmViewHolder private constructor(itemView: View) : AlarmItemVi
             itemView.findViewById(R.id.upcoming_instance_label) as TextView
     private val hairLine: View = itemView.findViewById(R.id.hairline)
 
+    private val annotationsAlpha: Float = CLOCK_ENABLED_ALPHA
+
     init {
         // Expand handler
         itemView.setOnClickListener { _ ->
@@ -80,6 +82,7 @@ class CollapsedAlarmViewHolder private constructor(itemView: View) : AlarmItemVi
         bindReadOnlyLabel(context, alarm)
         bindUpcomingInstance(context, alarm)
         bindPreemptiveDismissButton(context, alarm, alarmInstance)
+        bindAnnotations(context, alarm)
     }
 
     private fun bindReadOnlyLabel(context: Context, alarm: Alarm) {
@@ -122,6 +125,10 @@ class CollapsedAlarmViewHolder private constructor(itemView: View) : AlarmItemVi
         }
     }
 
+    private fun bindAnnotations(context: Context, alarm: Alarm) {
+        setChangingViewsAlpha(if (alarm.enabled) CLOCK_ENABLED_ALPHA else CLOCK_DISABLED_ALPHA)
+    }
+
     override fun onAnimateChange(
         payloads: List<Any>?,
         fromLeft: Int,
@@ -145,7 +152,7 @@ class CollapsedAlarmViewHolder private constructor(itemView: View) : AlarmItemVi
         }
 
         val isCollapsing = this == newHolder
-        setChangingViewsAlpha(if (isCollapsing) 0f else 1f)
+        setChangingViewsAlpha(if (isCollapsing) 0f else annotationsAlpha)
 
         val changeAnimatorSet: Animator = if (isCollapsing) {
             createCollapsingAnimator(oldHolder, duration)
@@ -158,7 +165,7 @@ class CollapsedAlarmViewHolder private constructor(itemView: View) : AlarmItemVi
                 onOff.visibility = View.VISIBLE
                 arrow.visibility = View.VISIBLE
                 arrow.setTranslationY(0f)
-                setChangingViewsAlpha(1f)
+                setChangingViewsAlpha(annotationsAlpha)
                 arrow.jumpDrawablesToCurrentState()
             }
         })
@@ -193,11 +200,11 @@ class CollapsedAlarmViewHolder private constructor(itemView: View) : AlarmItemVi
     private fun createCollapsingAnimator(oldHolder: AlarmItemViewHolder, duration: Long): Animator {
         val alphaAnimatorSet = AnimatorSet()
         alphaAnimatorSet.playTogether(
-                ObjectAnimator.ofFloat(alarmLabel, View.ALPHA, 1f),
-                ObjectAnimator.ofFloat(daysOfWeek, View.ALPHA, 1f),
-                ObjectAnimator.ofFloat(upcomingInstanceLabel, View.ALPHA, 1f),
-                ObjectAnimator.ofFloat(preemptiveDismissButton, View.ALPHA, 1f),
-                ObjectAnimator.ofFloat(hairLine, View.ALPHA, 1f))
+                ObjectAnimator.ofFloat(alarmLabel, View.ALPHA, annotationsAlpha),
+                ObjectAnimator.ofFloat(daysOfWeek, View.ALPHA, annotationsAlpha),
+                ObjectAnimator.ofFloat(upcomingInstanceLabel, View.ALPHA, annotationsAlpha),
+                ObjectAnimator.ofFloat(preemptiveDismissButton, View.ALPHA, annotationsAlpha),
+                ObjectAnimator.ofFloat(hairLine, View.ALPHA, annotationsAlpha))
         val standardDelay = (duration * ANIM_STANDARD_DELAY_MULTIPLIER).toLong()
         alphaAnimatorSet.setDuration(standardDelay)
         alphaAnimatorSet.setStartDelay(duration - standardDelay)

@@ -290,9 +290,9 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
     }
 
     override fun onStart() {
-        super.onStart()
         DataModel.dataModel.addSilentSettingsListener(mSilentSettingChangeWatcher)
         DataModel.dataModel.isApplicationInForeground = true
+        super.onStart()
     }
 
     override fun onResume() {
